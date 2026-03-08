@@ -13,7 +13,8 @@ A FSM é composta por:
 class FSM:
     """Máquina de Estados Finitos genérica para uso com Q-Learning."""
 
-    def __init__(self, states, actions, transitions, rewards, goal_states, default_reward=-1.0):
+    def __init__(self, states, actions, transitions, rewards, goal_states=None,
+                 default_reward=-1.0, initial_state=None):
         """
         Inicializa a FSM.
 
@@ -23,15 +24,17 @@ class FSM:
             transitions: Dicionário de transições {(estado, ação): próximo_estado}.
             rewards: Dicionário de recompensas {(estado, ação): recompensa}.
                      Se uma transição não tiver recompensa definida, usa default_reward.
-            goal_states: Conjunto de estados terminais/objetivo.
+            goal_states: Conjunto de estados terminais/objetivo (opcional).
             default_reward: Recompensa padrão para transições sem recompensa definida.
+            initial_state: Estado inicial da FSM (opcional).
         """
         self.states = list(states)
         self.actions = list(actions)
         self.transitions = dict(transitions)
         self.rewards = dict(rewards)
-        self.goal_states = set(goal_states)
+        self.goal_states = set(goal_states) if goal_states else set()
         self.default_reward = default_reward
+        self.initial_state = initial_state
 
         # Pré-calcular ações válidas por estado para acesso rápido
         self._valid_actions = {}

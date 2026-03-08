@@ -1,11 +1,20 @@
 """
 Exemplo de Q-Learning aplicado a uma Máquina de Estados Finitos (FSM).
 
-Este script cria uma FSM genérica com 6 estados e treina um agente
-Q-Learning para encontrar o caminho ótimo de qualquer estado até
-o estado-objetivo.
+Este script cria ou carrega uma FSM e treina um agente Q-Learning
+para encontrar o caminho ótimo entre estados.
 
-Estrutura da FSM:
+Modos de uso:
+    1. FSM de exemplo (hardcoded):
+       python main.py
+
+    2. FSM a partir de arquivo JSON:
+       python main.py --json caminho/para/arquivo.json
+
+    3. FSM a partir de JSON com estado-objetivo definido:
+       python main.py --json caminho/para/arquivo.json --goal nome_do_estado
+
+Estrutura da FSM de exemplo:
                                   
     A ──(ir_B)──→ B ──(ir_D)──→ D    
     │             │              │    
@@ -17,7 +26,10 @@ Estrutura da FSM:
     Recompensa: +100 ao chegar em F, -1 por cada passo
 """
 
+import argparse
+
 from fsm import FSM
+from fsm_loader import load_fsm_from_json
 from q_learning import QLearningAgent
 
 
@@ -69,23 +81,70 @@ def create_example_fsm():
     )
 
 
+def parse_args():
+    """Processa argumentos da linha de comando."""
+    parser = argparse.ArgumentParser(
+        description="Q-Learning para Máquina de Estados Finitos (FSM)"
+    )
+    parser.add_argument(
+        "--json",
+        type=str,
+        help="Caminho para o arquivo JSON contendo a definição da FSM.",
+    )
+    parser.add_argument(
+        "--goal",
+        type=str,
+        nargs="*",
+        help="Estado(s)-objetivo da FSM (separados por espaço).",
+    )
+    parser.add_argument(
+        "--episodes",
+        type=int,
+        default=1000,
+        help="Número de episódios de treinamento (padrão: 1000).",
+    )
+    return parser.parse_args()
+
+
+def print_fsm_info(fsm):
+    """Imprime informações sobre a FSM carregada."""
+    print(f"   {fsm}")
+    print(f"   Estado inicial: {fsm.initial_state or 'N/A'}")
+    print(f"\n   Transicoes:")
+    for (state, action), target in sorted(fsm.transitions.items()):
+        reward = fsm.rewards.get((state, action), fsm.default_reward)
+        goal_marker = " *" if target in fsm.goal_states else ""
+        print(f"     {state} --({action})--> {target}{goal_marker}  [r={reward}]")
+    if fsm.goal_states:
+        print(f"\n   Estados-objetivo: {fsm.goal_states}")
+    else:
+        print(f"\n   Sem estados-objetivo definidos (exploração livre).")
+
+
 def main():
+    args = parse_args()
+
     print("=" * 60)
     print("  Q-LEARNING PARA MAQUINA DE ESTADOS FINITOS")
     print("=" * 60)
 
-    # --- 1. Criar a FSM ---
-    print("\n[+] Criando FSM de exemplo...")
-    fsm = create_example_fsm()
-    print(f"   {fsm}")
+    # --- 1. Criar ou carregar a FSM ---
+    if args.json:
+        print(f"\n[+] Carregando FSM do arquivo: {args.json}")
+        goal_states = set(args.goal) if args.goal else None
+        fsm = load_fsm_from_json(args.json, goal_states=goal_states)
+    else:
+        print("\n[+] Criando FSM de exemplo...")
+        fsm = create_example_fsm()
+        print("\n   Estrutura da FSM:")
+        print("   A --(ir_B)--> B --(ir_D)--> D")
+        print("   |              |              |")
+        print("   (ir_C)       (ir_C)        (ir_F)")
+        print("   v              v              v")
+        print("   C --(ir_E)--> E --(ir_F)--> F *")
+        print("   * = Estado-objetivo")
 
-    print("\n   Estrutura da FSM:")
-    print("   A --(ir_B)--> B --(ir_D)--> D")
-    print("   |              |              |")
-    print("   (ir_C)       (ir_C)        (ir_F)")
-    print("   v              v              v")
-    print("   C --(ir_E)--> E --(ir_F)--> F *")
-    print("   * = Estado-objetivo")
+    print_fsm_info(fsm)
 
     # --- 2. Criar e treinar o agente ---
     print("\n[+] Criando agente Q-Learning...")
@@ -97,8 +156,9 @@ def main():
         epsilon_min=0.01,   # Epsilon minimo
     )
 
-    print("\n[+] Iniciando treinamento (1000 episodios)...\n")
-    metrics = agent.train(fsm, episodes=1000, max_steps_per_episode=50)
+    episodes = args.episodes
+    print(f"\n[+] Iniciando treinamento ({episodes} episodios)...\n")
+    metrics = agent.train(fsm, episodes=episodes, max_steps_per_episode=50)
 
     print(f"\n[+] Metricas finais:")
     print(f"   Episodios: {metrics['total_episodes']}")
