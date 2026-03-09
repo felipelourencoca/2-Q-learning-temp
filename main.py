@@ -39,6 +39,42 @@ def parse_args():
         default=1000,
         help="Número de episódios de treinamento (padrão: 1000).",
     )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=50,
+        help="Máximo de passos por episódio (padrão: 50).",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.1,
+        help="Taxa de aprendizado (padrão: 0.1).",
+    )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.9,
+        help="Fator de desconto (padrão: 0.9).",
+    )
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=1.0,
+        help="Taxa de exploração inicial (padrão: 1.0).",
+    )
+    parser.add_argument(
+        "--epsilon-decay",
+        type=float,
+        default=0.995,
+        help="Fator de decaimento do epsilon (padrão: 0.995).",
+    )
+    parser.add_argument(
+        "--epsilon-min",
+        type=float,
+        default=0.01,
+        help="Valor mínimo do epsilon (padrão: 0.01).",
+    )
     return parser.parse_args()
 
 
@@ -73,16 +109,19 @@ def main():
     # --- 2. Criar e treinar o agente ---
     print("\n[+] Criando agente Q-Learning...")
     agent = QLearningAgent(
-        alpha=0.1,          # Taxa de aprendizado
-        gamma=0.9,          # Fator de desconto
-        epsilon=1.0,        # Exploracao inicial (100%)
-        epsilon_decay=0.995, # Decaimento do epsilon
-        epsilon_min=0.01,   # Epsilon minimo
+        alpha=args.alpha,
+        gamma=args.gamma,
+        epsilon=args.epsilon,
+        epsilon_decay=args.epsilon_decay,
+        epsilon_min=args.epsilon_min,
     )
+    print(f"   alpha={args.alpha}, gamma={args.gamma}, epsilon={args.epsilon}, "
+          f"epsilon_decay={args.epsilon_decay}, epsilon_min={args.epsilon_min}")
 
     episodes = args.episodes
-    print(f"\n[+] Iniciando treinamento ({episodes} episodios)...\n")
-    metrics = agent.train(fsm, episodes=episodes, max_steps_per_episode=50)
+    max_steps = args.max_steps
+    print(f"\n[+] Iniciando treinamento ({episodes} episodios, max {max_steps} passos/episodio)...\n")
+    metrics = agent.train(fsm, episodes=episodes, max_steps_per_episode=max_steps)
 
     print(f"\n[+] Metricas finais:")
     print(f"   Episodios: {metrics['total_episodes']}")

@@ -47,19 +47,28 @@ def fsm_file(request):
 
 
 @pytest.fixture
+def max_steps(request):
+    """Retorna o valor de --max-steps passado na linha de comando."""
+    return request.config.getoption("--max-steps")
+
+
+@pytest.fixture
 def sample_fsm(fsm_file):
     """Carrega uma FSM a partir do arquivo JSON externo."""
     return load_fsm_from_json(fsm_file)
 
 
 @pytest.fixture
-def trained_agent(sample_fsm):
+def trained_agent(sample_fsm, max_steps, request):
     """Retorna um agente treinado na FSM carregada."""
     agent = QLearningAgent(
-        alpha=0.1, gamma=0.9, epsilon=1.0,
-        epsilon_decay=0.995, epsilon_min=0.01,
+        alpha=request.config.getoption("--alpha"),
+        gamma=request.config.getoption("--gamma"),
+        epsilon=request.config.getoption("--epsilon"),
+        epsilon_decay=request.config.getoption("--epsilon-decay"),
+        epsilon_min=request.config.getoption("--epsilon-min"),
     )
-    agent.train(sample_fsm, episodes=1000, max_steps_per_episode=50, verbose=False)
+    agent.train(sample_fsm, episodes=1000, max_steps_per_episode=max_steps, verbose=False)
     return agent
 
 
