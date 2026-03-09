@@ -47,21 +47,33 @@ def load_fsm_from_json(filepath, goal_states=None, goal_reward=100, step_reward=
     states_data = data.get("states", [])
 
     # Extrair estados, ações e transições
-    states = []
+    states_set = set()
+    states_ordered = []
     actions_set = set()
     transitions = {}
     rewards = {}
 
     for state_obj in states_data:
         state_name = state_obj["state"]
-        states.append(state_name)
+        if state_name not in states_set:
+            states_set.add(state_name)
+            states_ordered.append(state_name)
 
         for transition in state_obj.get("transitions", []):
             action = transition["input"]
             target = transition["target"]
 
+            # Ignorar transições sem ação definida (input: null)
+            if action is None:
+                continue
+
             actions_set.add(action)
             transitions[(state_name, action)] = target
+
+            # Incluir estados-destino que não estão na lista de estados
+            if target not in states_set:
+                states_set.add(target)
+                states_ordered.append(target)
 
             # Atribuir recompensa
             if goal_states and target in goal_states:
@@ -69,6 +81,7 @@ def load_fsm_from_json(filepath, goal_states=None, goal_reward=100, step_reward=
             else:
                 rewards[(state_name, action)] = step_reward
 
+    states = states_ordered
     actions = sorted(actions_set)
 
     if goal_states is None:
