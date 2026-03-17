@@ -51,6 +51,12 @@ class QLearningAgent:
         self.rewards_per_episode = []
         self.steps_per_episode = []
 
+        # Métricas de cobertura por episódio
+        self.states_visited_per_episode = []
+        self.transitions_visited_per_episode = []
+        self.cumulative_states = set()
+        self.cumulative_transitions = set()
+
     def choose_action(self, state, valid_actions):
         """
         Escolhe uma ação usando a política ε-greedy.
@@ -142,6 +148,8 @@ class QLearningAgent:
             state = random.choice(start_states)
             total_reward = 0.0
             steps = 0
+            episode_states = {state}
+            episode_transitions = set()
 
             for step in range(max_steps_per_episode):
                 valid_actions = fsm.get_valid_actions(state)
@@ -152,6 +160,10 @@ class QLearningAgent:
                 # Escolhe e executa ação
                 action = self.choose_action(state, valid_actions)
                 next_state, reward, done = fsm.step(state, action)
+
+                # Registra cobertura
+                episode_states.add(next_state)
+                episode_transitions.add((state, action, next_state))
 
                 # Obtém ações válidas do próximo estado
                 next_valid_actions = fsm.get_valid_actions(next_state) if not done else []
@@ -166,9 +178,15 @@ class QLearningAgent:
                 if done:
                     break
 
+            # Acumula métricas de cobertura
+            self.cumulative_states.update(episode_states)
+            self.cumulative_transitions.update(episode_transitions)
+
             # Registra métricas
             self.rewards_per_episode.append(total_reward)
             self.steps_per_episode.append(steps)
+            self.states_visited_per_episode.append(len(self.cumulative_states))
+            self.transitions_visited_per_episode.append(len(self.cumulative_transitions))
 
             # Decai epsilon
             self.decay_epsilon()
@@ -233,6 +251,22 @@ class QLearningAgent:
                 break
 
         return path
+
+    def get_convergence_episode(self, total_states, threshold=1.0):
+        """
+        Retorna o episódio em que a cobertura de estados atingiu o threshold.
+
+        Args:
+            total_states: Número total de estados da FSM.
+            threshold: Fração de cobertura desejada (0.0 a 1.0). Padrão: 1.0 (100%).
+
+        Returns:
+            Número do episódio (1-indexed) ou None se não atingiu.
+        """
+        for i, count in enumerate(self.states_visited_per_episode):
+            if count / total_states >= threshold:
+                return i + 1
+        return None
 
     def print_q_table(self, fsm):
         """

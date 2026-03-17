@@ -1,4 +1,4 @@
-﻿# Q-Learning para Maquina de Estados Finitos (FSM)
+# Q-Learning para Maquina de Estados Finitos (FSM)
 
 Implementacao de um agente **Q-Learning** aplicado a uma **Maquina de Estados Finitos (FSM)** carregada a partir de **arquivos JSON externos**. O agente aprende, por aprendizado por reforco, a navegar entre os estados da FSM.
 
@@ -40,11 +40,14 @@ Q-learning-fst/
 |-- fsm.py                          # Definicao da classe FSM generica
 |-- fsm_loader.py                   # Carregamento de FSM a partir de JSON
 |-- q_learning.py                   # Implementacao do agente Q-Learning
+|-- random_agent.py                 # Agente aleatorio (baseline)
 |-- main.py                         # Script principal (treina e demonstra)
+|-- analyze.py                      # Analise quantitativa e graficos
 |-- test_state_coverage.py          # Suite de testes parametrizados (pytest)
 |-- conftest.py                     # Opcoes customizadas do pytest
 |-- requirements.txt                # Dependencias do projeto
 |-- README.md                       # Este arquivo
+|-- results/                        # Graficos gerados pelo analyze.py
 |-- finite_states_machines/         # Arquivos JSON com FSMs
     |-- _01_LightSwitch_flattened.json
     |-- _02_DimmableLightSwitch_flattened.json
@@ -57,9 +60,11 @@ Q-learning-fst/
 |---------|-----------|
 | `fsm.py` | Classe `FSM` - encapsula estados, acoes, transicoes, recompensas, estados-objetivo e estado inicial. |
 | `fsm_loader.py` | Funcao `load_fsm_from_json()` - le um JSON e converte para `FSM`. Inclui automaticamente estados-destino referenciados em transicoes e ignora transicoes com `input: null`. |
-| `q_learning.py` | Classe `QLearningAgent` - treinamento, Q-table, politica epsilon-greedy e extracao de caminhos otimos. |
+| `q_learning.py` | Classe `QLearningAgent` - treinamento, Q-table, politica epsilon-greedy, extracao de caminhos otimos e metricas de cobertura por episodio. |
+| `random_agent.py` | Classe `RandomAgent` - agente baseline que escolhe acoes aleatorias (sem aprendizado), para comparacao com o Q-Learning. |
 | `main.py` | Carrega a FSM do JSON, treina o agente e imprime os caminhos aprendidos. |
-| `test_state_coverage.py` | Testes parametrizados que auto-descobrem todos os JSONs em `finite_states_machines/` e verificam State Coverage. |
+| `analyze.py` | Gera graficos comparativos (Q-Learning vs Random): curva de aprendizado, convergencia de cobertura, sensibilidade de hiperparametros e eficiencia de caminho. |
+| `test_state_coverage.py` | Testes parametrizados que auto-descobrem todos os JSONs e verificam State Coverage, Transition Coverage e Transition Pair Coverage. |
 | `conftest.py` | Registra opcoes customizadas de CLI para o pytest (hiperparametros). |
 
 ---
@@ -201,22 +206,30 @@ python main.py --json finite_states_machines/_05_PresenceSimulationLightSwitch_f
 
 ---
 
-## Testes - State Coverage
+## Testes - Criterios de Cobertura
 
 Os testes sao **parametrizados** e auto-descobrem todos os JSONs em `finite_states_machines/`. Cada teste e executado uma vez para cada FSM encontrada.
 
+Tres criterios de cobertura sao implementados, em ordem crescente de rigor:
+
+1. **State Coverage** - Todos os estados foram visitados?
+2. **Transition Coverage** - Todas as transicoes foram exercitadas?
+3. **Transition Pair Coverage** - Todos os pares de transicoes consecutivas foram cobertos?
+
 ### Classes de teste
 
-| Classe | Usa Q-Learning? | O que testa |
-|--------|:-:|---|
-| `TestStateCoverage` | Nao | Estrutura da FSM: estados existem, transicoes validas, alcancabilidade via BFS |
-| `TestStateCoverageQLearning` | Sim | Agente explorou os estados e Q-table foi populada |
-| `TestStateCoverageReport` | Sim | Gera relatorio de cobertura com os caminhos aprendidos |
+| Classe | Usa Q-Learning? | Criterio | O que testa |
+|--------|:-:|:-:|---|
+| `TestStateCoverage` | Nao | State Coverage | Estrutura da FSM: estados existem, transicoes validas, alcancabilidade via BFS |
+| `TestStateCoverageQLearning` | Sim | State Coverage | Agente explorou os estados e Q-table foi populada |
+| `TestStateCoverageReport` | Sim | State Coverage | Gera relatorio de cobertura com os caminhos aprendidos |
+| `TestTransitionCoverage` | Ambos | Transition Coverage | Todas as transicoes sao alcancaveis (BFS) e exercitadas pelo Q-Learning |
+| `TestTransitionPairCoverage` | Sim | Transition Pair Coverage | Pares consecutivos de transicoes foram cobertos |
 
 ### Executar os testes
 
 ```bash
-# Todas as 3 classes em todas as FSMs (automatico)
+# Todos os criterios em todas as FSMs (automatico)
 python -m pytest test_state_coverage.py -v
 ```
 
@@ -234,27 +247,33 @@ python -m pytest test_state_coverage.py -v -k "_01 or _03"
 python -m pytest test_state_coverage.py -v -k "not _05"
 ```
 
-### Filtrar por classe de teste
+### Filtrar por criterio de cobertura
 
 ```bash
-# Apenas testes de estrutura (sem Q-Learning)
+# Apenas State Coverage (sem Q-Learning)
 python -m pytest test_state_coverage.py -v -k "TestStateCoverage and not QLearning and not Report"
 
-# Apenas testes com Q-Learning
-python -m pytest test_state_coverage.py -v -k "QLearning"
+# Apenas Transition Coverage
+python -m pytest test_state_coverage.py -v -k "TransitionCoverage and not Pair"
 
-# Apenas o relatorio de cobertura
-python -m pytest test_state_coverage.py -v -s -k "Report"
+# Apenas Transition Pair Coverage
+python -m pytest test_state_coverage.py -v -k "TransitionPairCoverage"
+
+# Apenas relatorios (todos os criterios)
+python -m pytest test_state_coverage.py -v -s -k "Report or report"
 ```
 
-### Combinar filtros (classe + FSM)
+### Combinar filtros (criterio + FSM)
 
 ```bash
-# Q-Learning apenas na maquina _03
-python -m pytest test_state_coverage.py -v -k "QLearning and _03"
+# Transition Coverage apenas na maquina _03
+python -m pytest test_state_coverage.py -v -k "TransitionCoverage and _03"
 
-# Relatorio apenas na maquina _01
+# Relatorio de cobertura de estados na maquina _01
 python -m pytest test_state_coverage.py -v -s -k "Report and _01"
+
+# Todos os relatorios da maquina _02
+python -m pytest test_state_coverage.py -v -s -k "(_02) and (Report or report)"
 ```
 
 ### Configurar hiperparametros nos testes
@@ -290,10 +309,39 @@ python -m pytest test_state_coverage.py -v -s -k "Report and _03" --max-steps 10
 
 ---
 
+## Analise Quantitativa (analyze.py)
+
+O script `analyze.py` gera graficos para a dissertacao, comparando **Q-Learning** com um **Random Agent** (baseline).
+
+### Executar a analise
+
+```bash
+# Analisar uma FSM especifica
+python analyze.py --json finite_states_machines/_01_LightSwitch_flattened.json
+
+# Analisar todas as FSMs
+python analyze.py --all-fsms
+
+# Configurar episodios e passos
+python analyze.py --json finite_states_machines/_02_DimmableLightSwitch_flattened.json --episodes 2000 --max-steps 100
+```
+
+### Graficos gerados (salvos em `results/`)
+
+| Grafico | Descricao |
+|---------|----------|
+| `learning_curve_*.png` | Recompensa acumulada × episodios (Q-Learning vs Random) |
+| `coverage_convergence_*.png` | State Coverage e Transition Coverage × episodios |
+| `sensitivity_*.png` | Impacto de alpha, gamma e epsilon na cobertura |
+| `path_efficiency_*.png` | Comprimento dos caminhos Q-Learning vs BFS otimo |
+
+---
+
 ## Tecnologias Utilizadas
 
 - **Python 3** - Linguagem principal
 - **NumPy** - Computacao numerica
+- **Matplotlib** - Geracao de graficos para analise quantitativa
 - **pytest** - Framework de testes automatizados
 - **Biblioteca padrao** - `random`, `collections.defaultdict`, `json`, `argparse`, `glob`
 

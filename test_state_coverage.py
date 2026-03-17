@@ -274,3 +274,240 @@ class TestStateCoverageReport:
 
         # Não faz assertion de 100% pois FSMs sem goal não convergem
         assert coverage > 0, "Nenhum estado foi coberto"
+
+
+# ===========================================================================
+#  TRANSITION COVERAGE – Critério intermediário
+# ===========================================================================
+
+class TestTransitionCoverage:
+    """
+    Critério: TRANSITION COVERAGE (Cobertura de Transições)
+
+    Exige que TODAS as transições (s, a) → s' da FSM sejam exercitadas
+    por pelo menos um caso de teste.
+
+    Cobertura = |Transições exercitadas| / |Total de transições| × 100%
+
+    Referência: "Introduction to Software Testing" – Paul Ammann & Jeff Offutt
+    """
+
+    def test_all_transitions_enumerated(self, sample_fsm):
+        """Verifica que a FSM possui transições para enumerar."""
+        assert len(sample_fsm.transitions) > 0, (
+            "A FSM deve possuir ao menos uma transição"
+        )
+
+    def test_all_transitions_reachable_via_bfs(self, sample_fsm):
+        """
+        Verifica quais transições são alcançáveis via BFS a partir
+        do estado inicial.
+
+        Transition Coverage exige que todas as transições possam ser
+        exercitadas.
+        """
+        if sample_fsm.initial_state is None:
+            pytest.skip("FSM sem estado inicial definido")
+
+        visited_states = set()
+        exercised_transitions = set()
+        queue = [sample_fsm.initial_state]
+
+        while queue:
+            state = queue.pop(0)
+            if state in visited_states:
+                continue
+            visited_states.add(state)
+
+            for action in sample_fsm.get_valid_actions(state):
+                next_state = sample_fsm.transitions.get((state, action))
+                if next_state:
+                    exercised_transitions.add((state, action, next_state))
+                    if next_state not in visited_states:
+                        queue.append(next_state)
+
+        all_transitions = {
+            (s, a, t) for (s, a), t in sample_fsm.transitions.items()
+        }
+        uncovered = all_transitions - exercised_transitions
+        coverage = len(exercised_transitions) / len(all_transitions) * 100
+
+        assert uncovered == set(), (
+            f"Transition Coverage FALHOU (BFS)! "
+            f"Transições não alcançáveis: {len(uncovered)}. "
+            f"Cobertura: {coverage:.0f}%"
+        )
+
+    def test_qlearning_transition_coverage(self, sample_fsm, trained_agent):
+        """
+        Verifica a cobertura de transições nos caminhos aprendidos
+        pelo Q-Learning.
+        """
+        exercised = set()
+        non_terminal = [s for s in sample_fsm.states if not sample_fsm.is_terminal(s)]
+
+        for start in non_terminal:
+            path = trained_agent.get_optimal_path(sample_fsm, start)
+            for i in range(len(path) - 1):
+                state, action = path[i]
+                next_state = path[i + 1][0]
+                if action is not None:
+                    exercised.add((state, action, next_state))
+
+        all_transitions = {
+            (s, a, t) for (s, a), t in sample_fsm.transitions.items()
+        }
+        coverage = len(exercised) / len(all_transitions) * 100 if all_transitions else 0
+
+        # Registra a cobertura (nem sempre será 100% pois caminhos ótimos
+        # podem não usar todas as transições)
+        assert len(exercised) > 0, "Q-Learning não exercitou nenhuma transição"
+
+    def test_generate_transition_coverage_report(self, sample_fsm, trained_agent, fsm_file, capsys):
+        """Imprime um relatório de Transition Coverage."""
+        exercised = set()
+        non_terminal = [s for s in sample_fsm.states if not sample_fsm.is_terminal(s)]
+
+        for start in non_terminal:
+            path = trained_agent.get_optimal_path(sample_fsm, start)
+            for i in range(len(path) - 1):
+                state, action = path[i]
+                next_state = path[i + 1][0]
+                if action is not None:
+                    exercised.add((state, action, next_state))
+
+        all_transitions = {
+            (s, a, t) for (s, a), t in sample_fsm.transitions.items()
+        }
+        coverage = len(exercised) / len(all_transitions) * 100 if all_transitions else 0
+
+        print("\n")
+        print("=" * 60)
+        print("  RELATÓRIO DE TRANSITION COVERAGE")
+        print("=" * 60)
+        print(f"\n  Arquivo: {os.path.basename(fsm_file)}")
+        print(f"  Total de transições:     {len(all_transitions)}")
+        print(f"  Transições exercitadas:  {len(exercised)}")
+        print(f"  Cobertura:               {coverage:.0f}%")
+
+        uncovered = all_transitions - exercised
+        if uncovered:
+            print(f"\n  Transições NÃO cobertas ({len(uncovered)}):")
+            for s, a, t in sorted(uncovered):
+                print(f"    {s} --({a})--> {t}")
+
+        print("\n" + "=" * 60)
+
+        assert coverage > 0, "Nenhuma transição foi coberta"
+
+
+# ===========================================================================
+#  TRANSITION PAIR COVERAGE – Critério avançado
+# ===========================================================================
+
+class TestTransitionPairCoverage:
+    """
+    Critério: TRANSITION PAIR COVERAGE (Cobertura de Pares de Transições)
+
+    Para cada par de transições consecutivas:
+        t1: (s1, a1) → s2
+        t2: (s2, a2) → s3
+    exige que ambas sejam exercitadas em sequência.
+
+    Cobertura = |Pares cobertos| / |Total de pares possíveis| × 100%
+
+    Referência: "Introduction to Software Testing" – Paul Ammann & Jeff Offutt
+    """
+
+    @staticmethod
+    def _compute_possible_pairs(fsm):
+        """Calcula todos os pares de transições consecutivas possíveis."""
+        pairs = set()
+        for (s1, a1), s2 in fsm.transitions.items():
+            for a2 in fsm.get_valid_actions(s2):
+                s3 = fsm.transitions.get((s2, a2))
+                if s3:
+                    pairs.add(((s1, a1, s2), (s2, a2, s3)))
+        return pairs
+
+    @staticmethod
+    def _extract_pairs_from_path(path):
+        """Extrai pares de transições consecutivas de um caminho."""
+        pairs = set()
+        transitions = []
+        for i in range(len(path) - 1):
+            state, action = path[i]
+            next_state = path[i + 1][0]
+            if action is not None:
+                transitions.append((state, action, next_state))
+
+        for i in range(len(transitions) - 1):
+            pairs.add((transitions[i], transitions[i + 1]))
+
+        return pairs
+
+    def test_transition_pairs_exist(self, sample_fsm):
+        """Verifica que a FSM possui pares de transições consecutivas."""
+        pairs = self._compute_possible_pairs(sample_fsm)
+        # FSMs com apenas 1 transição não terão pares
+        if len(sample_fsm.transitions) <= 1:
+            pytest.skip("FSM possui no máximo 1 transição, sem pares possíveis")
+        assert len(pairs) > 0, "A FSM deveria possuir pares de transições"
+
+    def test_qlearning_transition_pair_coverage(self, sample_fsm, trained_agent):
+        """
+        Verifica a cobertura de pares de transições nos caminhos
+        aprendidos pelo Q-Learning.
+        """
+        possible_pairs = self._compute_possible_pairs(sample_fsm)
+        if not possible_pairs:
+            pytest.skip("FSM sem pares de transições possíveis")
+
+        covered_pairs = set()
+        non_terminal = [s for s in sample_fsm.states if not sample_fsm.is_terminal(s)]
+
+        for start in non_terminal:
+            path = trained_agent.get_optimal_path(sample_fsm, start)
+            covered_pairs.update(self._extract_pairs_from_path(path))
+
+        relevant_pairs = covered_pairs & possible_pairs
+        coverage = len(relevant_pairs) / len(possible_pairs) * 100
+
+        assert len(relevant_pairs) > 0, "Q-Learning não cobriu nenhum par de transições"
+
+    def test_generate_transition_pair_report(self, sample_fsm, trained_agent, fsm_file, capsys):
+        """Imprime um relatório de Transition Pair Coverage."""
+        possible_pairs = self._compute_possible_pairs(sample_fsm)
+        if not possible_pairs:
+            pytest.skip("FSM sem pares de transições possíveis")
+
+        covered_pairs = set()
+        non_terminal = [s for s in sample_fsm.states if not sample_fsm.is_terminal(s)]
+
+        for start in non_terminal:
+            path = trained_agent.get_optimal_path(sample_fsm, start)
+            covered_pairs.update(self._extract_pairs_from_path(path))
+
+        relevant_pairs = covered_pairs & possible_pairs
+        coverage = len(relevant_pairs) / len(possible_pairs) * 100
+
+        print("\n")
+        print("=" * 60)
+        print("  RELATÓRIO DE TRANSITION PAIR COVERAGE")
+        print("=" * 60)
+        print(f"\n  Arquivo: {os.path.basename(fsm_file)}")
+        print(f"  Total de pares possíveis:  {len(possible_pairs)}")
+        print(f"  Pares cobertos:            {len(relevant_pairs)}")
+        print(f"  Cobertura:                 {coverage:.0f}%")
+
+        uncovered = possible_pairs - relevant_pairs
+        if uncovered and len(uncovered) <= 20:
+            print(f"\n  Pares NÃO cobertos ({len(uncovered)}):")
+            for (s1, a1, s2), (_, a2, s3) in sorted(uncovered):
+                print(f"    [{s1} --({a1})--> {s2}] + [{s2} --({a2})--> {s3}]")
+        elif uncovered:
+            print(f"\n  Pares NÃO cobertos: {len(uncovered)} (muitos para listar)")
+
+        print("\n" + "=" * 60)
+
+        assert coverage > 0, "Nenhum par de transições foi coberto"
